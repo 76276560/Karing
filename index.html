@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Karing 订阅处理器</title>
     <style>
-        /* 保持之前的样式不变 */
+        /* 样式保持不变 */
         * {
             margin: 0;
             padding: 0;
@@ -217,6 +217,14 @@
             font-family: 'Courier New', monospace;
             border: 1px solid #e9ecef;
         }
+        
+        .clean-info {
+            background: #e8f5e8;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border-left: 4px solid #4caf50;
+        }
     </style>
 </head>
 <body>
@@ -287,6 +295,10 @@
                 
                 <div class="output-format">
                     <strong>输出格式：</strong> 纯Base64编码内容（无注释）
+                </div>
+                
+                <div class="clean-info">
+                    ✅ 系统将自动清理：移除所有注释行（#开头）和空白行，只保留纯Base64编码
                 </div>
                 
                 <div id="status"></div>
@@ -513,20 +525,24 @@
                 }
                 
                 const data = await response.json();
-                base64Content = data.contents;
+                const rawContent = data.contents;
                 
-                if (!base64Content) {
+                if (!rawContent) {
                     throw new Error('未能获取到有效内容');
                 }
                 
-                // 清理内容：移除可能的注释和空白行
-                base64Content = cleanBase64Content(base64Content);
+                // 清理内容：移除所有注释和空白行，只保留纯Base64
+                base64Content = cleanBase64Content(rawContent);
+                
+                if (!base64Content) {
+                    throw new Error('清理后未找到有效的Base64内容');
+                }
                 
                 showStatus('内容获取成功！正在上传...', 'success');
                 document.getElementById('uploadBtn').disabled = false;
                 
                 // 显示清理后的内容预览
-                showResult(`Base64内容预览（前200字符）:\n${base64Content.substring(0, 200)}...`);
+                showResult(`✅ 纯Base64内容已准备就绪！\n\n内容预览（前200字符）:\n${base64Content.substring(0, 200)}...\n\n总长度: ${base64Content.length} 字符`);
                 
             } catch (error) {
                 showStatus(`获取失败: ${error.message}`, 'error');
@@ -534,7 +550,7 @@
             }
         }
 
-        // 清理Base64内容，移除注释和空白
+        // 清理Base64内容，移除所有注释和空白，只保留纯Base64
         function cleanBase64Content(content) {
             // 按行分割
             const lines = content.split('\n');
@@ -543,7 +559,7 @@
             for (let line of lines) {
                 const trimmedLine = line.trim();
                 
-                // 跳过空行和注释行
+                // 跳过空行和注释行（以#开头的行）
                 if (trimmedLine === '' || trimmedLine.startsWith('#')) {
                     continue;
                 }
@@ -554,14 +570,14 @@
                 }
             }
             
-            // 如果清理后没有内容，返回原始内容
-            return cleanContent.trim() || content.trim();
+            return cleanContent.trim();
         }
 
         // 检查是否是有效的Base64行
         function isValidBase64Line(line) {
             // Base64通常包含A-Za-z0-9+/=字符，且长度较长
-            return /^[A-Za-z0-9+/=]+$/.test(line) && line.length >= 20;
+            // 排除包含URL或其他非Base64字符的行
+            return /^[A-Za-z0-9+/=]+$/.test(line) && line.length >= 10;
         }
 
         // 上传到GitHub
@@ -579,14 +595,14 @@
             try {
                 showStatus('正在上传到GitHub...', 'info');
                 
-                // 只上传纯Base64内容，无注释
-                const fileContent = base64Content.trim();
+                // 只上传纯Base64内容，无任何注释
+                const fileContent = base64Content;
                 
                 // 上传到GitHub
                 const result = await githubUploadFile('订阅.txt', fileContent);
                 
-                showStatus('✅ 文件已成功上传到GitHub！', 'success');
-                showResult(`✅ 纯Base64内容已上传到GitHub！\n\n文件地址: https://github.com/${githubConfig.owner}/${githubConfig.repo}/blob/main/订阅.txt\n\n内容预览（前100字符）:\n${base64Content.substring(0, 100)}...`);
+                showStatus('✅ 纯Base64文件已成功上传到GitHub！', 'success');
+                showResult(`✅ 纯Base64内容已上传到GitHub！\n\n文件地址: https://github.com/${githubConfig.owner}/${githubConfig.repo}/blob/main/订阅.txt\n\n内容预览（前100字符）:\n${base64Content.substring(0, 100)}...\n\n总长度: ${base64Content.length} 字符`);
                 
             } catch (error) {
                 showStatus(`上传失败: ${error.message}`, 'error');
