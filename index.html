@@ -3,214 +3,262 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>订阅链接管理器</title>
+    <title>Karing 订阅处理器</title>
     <style>
-        :root {
-            --primary: #238636;
-            --secondary: #1f6feb;
-            --background: #0d1117;
-            --surface: #161b22;
-            --text: #f0f6fc;
-        }
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: var(--background);
-            color: var(--text);
-            line-height: 1.6;
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
             padding: 20px;
-            min-height: 100vh;
+            background: #f5f5f5;
         }
         .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: var(--surface);
-            border-radius: 12px;
+            background: white;
             padding: 30px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-            border: 1px solid #30363d;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid #30363d;
-        }
-        .header h1 {
-            font-size: 2.2em;
-            margin-bottom: 8px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .card {
-            background: rgba(1, 4, 9, 0.5);
-            border: 1px solid #30363d;
-            border-radius: 8px;
-            padding: 24px;
-            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         .upload-area {
-            border: 2px dashed #3fb950;
+            border: 2px dashed #007cba;
             border-radius: 8px;
-            padding: 40px 20px;
+            padding: 30px;
             text-align: center;
+            margin: 20px 0;
             cursor: pointer;
-            transition: all 0.3s ease;
-            background: rgba(35, 134, 54, 0.1);
         }
-        .upload-area:hover {
-            border-color: #238636;
-            background: rgba(35, 134, 54, 0.2);
-        }
-        .upload-area.dragover {
-            border-color: #238636;
-            background: rgba(35, 134, 54, 0.3);
-        }
-        .btn {
-            background: var(--primary);
+        button {
+            background: #007cba;
             color: white;
             border: none;
             padding: 12px 24px;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.2s;
             margin: 5px;
         }
-        .btn:hover {
-            background: #2ea043;
-            transform: translateY(-1px);
-        }
-        .btn-secondary {
-            background: var(--secondary);
-        }
-        .btn-secondary:hover {
-            background: #388bfd;
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
         }
         .result {
-            background: #0a0c10;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            padding: 16px;
-            margin-top: 16px;
-            font-family: 'Monaco', 'Menlo', monospace;
+            margin-top: 20px;
+            padding: 15px;
+            background: #2c3e50;
+            color: white;
+            border-radius: 5px;
+            font-family: monospace;
             white-space: pre-wrap;
             word-break: break-all;
-            max-height: 400px;
+            max-height: 300px;
             overflow-y: auto;
         }
-        .file-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            background: rgba(88, 166, 255, 0.1);
-            border-radius: 6px;
-            margin-top: 12px;
-        }
         .status {
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 500;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
         }
-        .status-success {
-            background: rgba(35, 134, 54, 0.2);
-            color: #3fb950;
-        }
-        .status-error {
-            background: rgba(248, 81, 73, 0.2);
-            color: #f85149;
-        }
-        .last-update {
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .date-info {
+            background: #e2e3e5;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
             text-align: center;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #30363d;
-            color: #8b949e;
-            font-size: 12px;
-        }
-        input[type="file"] {
-            display: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>📱 订阅链接管理器</h1>
-            <p>自动读取手机订阅文件并生成可用链接</p>
+        <h1>📱 Karing 订阅处理器</h1>
+        <p>自动识别日期文件，获取Base64编码并生成 订阅.txt</p>
+        
+        <div class="date-info">
+            <strong>今日日期:</strong> <span id="currentDate">...</span><br>
+            <strong>期望文件名:</strong> 订阅<span id="expectedFilename">...</span>.txt
+        </div>
+        
+        <div class="upload-area" id="uploadArea">
+            <input type="file" id="fileInput" accept=".txt" style="display: none;">
+            <h3>点击选择今日订阅文件</h3>
+            <p>文件路径: /sdcard/DCIM/Karing订阅/订阅<span id="todayDate">1005</span>.txt</p>
+            <button onclick="document.getElementById('fileInput').click()">
+                选择文件
+            </button>
         </div>
 
-        <div class="card">
-            <h3>📁 文件上传</h3>
-            <p style="margin-bottom: 16px; color: #8b949e;">
-                上传您的订阅文件：<code>/storage/emulated/0/DCIM/Karing订阅/订阅1005.txt</code>
-            </p>
-            
-            <div class="upload-area" id="uploadArea">
-                <input type="file" id="fileInput" accept=".txt">
-                <div>
-                    <h3>点击选择文件 或 拖拽文件到这里</h3>
-                    <p style="color: #8b949e; margin: 8px 0;">支持 .txt 格式文件</p>
-                    <button class="btn" onclick="document.getElementById('fileInput').click()">
-                        选择文件
-                    </button>
-                </div>
-            </div>
+        <div id="status"></div>
 
-            <div id="fileInfo" style="display: none;">
-                <div class="file-info">
-                    <div>
-                        <strong>文件:</strong> <span id="fileName"></span> | 
-                        <strong>大小:</strong> <span id="fileSize"></span>
-                    </div>
-                    <div class="status" id="fileStatus">等待处理</div>
-                </div>
-            </div>
+        <button onclick="processFile()" id="processBtn" disabled>开始处理</button>
+        <button onclick="downloadResult()" id="downloadBtn" disabled>下载 订阅.txt</button>
+
+        <div class="result" id="result">
+            请选择今日的订阅文件...
         </div>
 
-        <div class="card">
-            <h3>🔄 内容处理</h3>
-            <div style="margin-bottom: 16px;">
-                <button class="btn" onclick="processFile()" id="processBtn" disabled>
-                    处理文件
-                </button>
-                <button class="btn btn-secondary" onclick="generateOutput()" id="generateBtn" disabled>
-                    生成输出
-                </button>
-                <button class="btn" onclick="clearAll()">
-                    清空
-                </button>
-            </div>
-
-            <div id="resultContainer" style="display: none;">
-                <div class="result" id="result">
-                    处理结果将显示在这里...
-                </div>
-                <div style="margin-top: 12px;">
-                    <button class="btn" onclick="copyToClipboard()">
-                        复制内容
-                    </button>
-                    <button class="btn btn-secondary" onclick="saveToFile()">
-                        保存文件
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <div class="last-update">
-            <div>最后更新: <span id="updateTime">-</span></div>
-            <div>页面版本: 1.0.0 | 自动更新: 每天 07:00</div>
+        <div style="margin-top: 20px; font-size: 0.9em; color: #666;">
+            <h4>处理流程:</h4>
+            <ol>
+                <li>选择手机上的 订阅MMDD.txt 文件 (MMDD=月日)</li>
+                <li>系统自动读取文件中的网址</li>
+                <li>访问网址获取Base64编码</li>
+                <li>下载包含Base64编码的 订阅.txt 文件</li>
+                <li>将下载的文件上传到GitHub项目</li>
+            </ol>
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script>
+        let fileContent = '';
+        let base64Content = '';
+        let todayDate = '';
+
+        // 初始化日期
+        function initDate() {
+            const now = new Date();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            todayDate = month + day;
+            
+            document.getElementById('currentDate').textContent = now.toLocaleDateString('zh-CN');
+            document.getElementById('todayDate').textContent = todayDate;
+            document.getElementById('expectedFilename').textContent = todayDate;
+        }
+
+        // 文件选择
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        // 拖拽功能
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover', (e) => e.preventDefault());
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files.length > 0) {
+                handleFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            if (!file.name.endsWith('.txt')) {
+                showStatus('请选择.txt文件', 'error');
+                return;
+            }
+
+            // 检查文件名是否符合日期格式
+            const fileName = file.name;
+            if (!isValidDateFile(fileName)) {
+                showStatus(`警告: 文件名 "${fileName}" 可能不是今日文件。建议使用 订阅${todayDate}.txt`, 'error');
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                fileContent = e.target.result.trim();
+                showStatus('文件读取成功', 'success');
+                document.getElementById('processBtn').disabled = false;
+                document.getElementById('result').textContent = `文件内容:\n${fileContent}`;
+            };
+            reader.readAsText(file);
+        }
+
+        function isValidDateFile(fileName) {
+            // 检查文件名格式: 订阅MMDD.txt
+            const match = fileName.match(/订阅(\d{4})\.txt$/);
+            if (!match) return false;
+            
+            const fileDate = match[1];
+            return fileDate === todayDate;
+        }
+
+        async function processFile() {
+            if (!fileContent) {
+                showStatus('请先选择文件', 'error');
+                return;
+            }
+
+            try {
+                showStatus('正在获取Base64编码...', 'success');
+                document.getElementById('processBtn').disabled = true;
+
+                // 提取网址
+                const url = extractUrl(fileContent);
+                if (!url) {
+                    throw new Error('文件中未找到有效网址');
+                }
+
+                // 获取Base64内容
+                base64Content = await fetchBase64Content(url);
+                
+                // 显示结果
+                document.getElementById('result').textContent = `✅ Base64编码获取成功!\n\n${base64Content}`;
+                document.getElementById('downloadBtn').disabled = false;
+                showStatus('处理完成，可以下载文件了', 'success');
+
+            } catch (error) {
+                showStatus(`处理失败: ${error.message}`, 'error');
+                document.getElementById('processBtn').disabled = false;
+            }
+        }
+
+        function extractUrl(content) {
+            // 提取第一个http/https网址
+            const urlMatch = content.match(/https?:\/\/[^\s\r\n]+/);
+            return urlMatch ? urlMatch[0] : null;
+        }
+
+        async function fetchBase64Content(url) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const content = await response.text();
+                return content.trim();
+            } catch (error) {
+                throw new Error(`获取网址内容失败: ${error.message}`);
+            }
+        }
+
+        function downloadResult() {
+            if (!base64Content) {
+                showStatus('没有可下载的内容', 'error');
+                return;
+            }
+
+            const timestamp = new Date().toLocaleString('zh-CN');
+            const finalContent = `# Karing 订阅数据
+# 生成时间: ${timestamp}
+# 数据来源: ${extractUrl(fileContent)}
+# 文件日期: ${todayDate}
+
+${base64Content}
+
+# 文件结束`;
+
+            const blob = new Blob([finalContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            
+            a.href = url;
+            a.download = '订阅.txt';
+            a.click();
+            
+            URL.revokeObjectURL(url);
+            showStatus('文件已下载完成', 'success');
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initDate();
+        });
+    </script>
 </body>
 </html>
