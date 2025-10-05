@@ -1,212 +1,277 @@
-<script>
-// 全局变量
-let fileContent = '';
-let targetUrl = '';
-let base64Content = '';
-
-// CORS代理列表
-const corsProxies = [
-    'https://api.allorigins.win/get?url=',
-    'https://corsproxy.io/?',
-    'https://proxy.cors.sh/',
-    'https://nc-cors-anywhere.herokuapp.com/',
-    'https://cors-anywhere.herokuapp.com/'
-];
-
-// 初始化日期
-function initDate() {
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const todayDate = month + day;
-    
-    document.getElementById('currentDate').textContent = now.toLocaleDateString('zh-CN');
-    document.getElementById('todayDate').textContent = todayDate;
-}
-
-// 文件选择处理
-document.getElementById('fileInput').addEventListener('change', function(e) {
-    if (e.target.files.length > 0) {
-        handleFileSelect(e.target.files[0]);
-    }
-});
-
-// 拖拽功能
-const uploadArea = document.getElementById('uploadArea');
-
-uploadArea.addEventListener('dragover', function(e) {
-    e.preventDefault();
-    uploadArea.classList.add('dragover');
-});
-
-uploadArea.addEventListener('dragleave', function() {
-    uploadArea.classList.remove('dragover');
-});
-
-uploadArea.addEventListener('drop', function(e) {
-    e.preventDefault();
-    uploadArea.classList.remove('dragover');
-    if (e.dataTransfer.files.length > 0) {
-        handleFileSelect(e.dataTransfer.files[0]);
-    }
-});
-
-// 处理文件选择
-function handleFileSelect(file) {
-    if (!file.name.endsWith('.txt')) {
-        showStatus('请选择.txt文件', 'error');
-        return;
-    }
-    
-    // 显示文件信息
-    document.getElementById('fileInfo').style.display = 'block';
-    document.getElementById('fileName').textContent = file.name;
-    document.getElementById('fileSize').textContent = formatFileSize(file.size);
-    
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        fileContent = e.target.result;
-        targetUrl = extractUrl(fileContent);
-        
-        if (targetUrl) {
-            showStatus(`找到链接: ${targetUrl}`, 'success');
-            document.getElementById('processBtn').disabled = false;
-        } else {
-            showStatus('文件中未找到有效链接', 'error');
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Karing 订阅处理器</title>
+    <style>
+        /* 保持之前的样式不变 */
+        .github-config {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #28a745;
         }
-    };
-    
-    reader.onerror = function() {
-        showStatus('文件读取失败', 'error');
-    };
-    
-    reader.readAsText(file);
-}
+        .config-input {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .btn-github {
+            background: #28a745;
+        }
+        .btn-github:hover {
+            background: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Karing 订阅处理器</h1>
+            <p class="subtitle">自动处理订阅文件并上传到GitHub</p>
+        </header>
+        
+        <div class="content">
+            <!-- GitHub配置区域 -->
+            <div class="github-config">
+                <h3>🔑 GitHub 配置</h3>
+                <p>请填写以下信息以自动上传到GitHub：</p>
+                <input type="text" id="githubToken" class="config-input" placeholder="GitHub Personal Access Token">
+                <input type="text" id="repoOwner" class="config-input" placeholder="GitHub用户名">
+                <input type="text" id="repoName" class="config-input" placeholder="仓库名 (默认: Karing)" value="Karing">
+                <button class="btn btn-github" onclick="saveGithubConfig()">保存配置</button>
+                <div id="configStatus" style="margin-top: 10px;"></div>
+            </div>
 
-// 提取URL
-function extractUrl(content) {
-    const urlMatch = content.match(/https?:\/\/[^\s\r\n]+/);
-    return urlMatch ? urlMatch[0] : null;
-}
-
-// 使用多个代理尝试获取内容
-async function fetchWithProxies(url) {
-    for (let i = 0; i < corsProxies.length; i++) {
-        try {
-            const proxyUrl = corsProxies[i] + encodeURIComponent(url);
-            console.log(`尝试代理 ${i + 1}: ${corsProxies[i]}`);
+            <!-- 原有的文件处理区域 -->
+            <div class="date-info">
+                今日日期：<span id="currentDate">2023年10月5日</span> | 
+                今日文件：订阅<span id="todayDate">1005</span>.txt
+            </div>
             
-            const response = await fetch(proxyUrl, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/plain',
-                },
-                timeout: 10000
-            });
-            
-            if (response.ok) {
-                const data = await response.text();
+            <div class="card">
+                <h3>📁 1. 上传手机订阅文件</h3>
+                <p>请选择您的手机订阅文件：<code>/sdcard/DCIM/Karing订阅/订阅1005.txt</code></p>
                 
-                // 处理不同的代理返回格式
-                if (corsProxies[i].includes('allorigins.win')) {
-                    const jsonData = JSON.parse(data);
-                    return jsonData.contents;
-                } else {
-                    return data;
-                }
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="fileInput" accept=".txt" style="display: none;">
+                    <h3>点击选择文件或拖拽到此处</h3>
+                    <p>仅支持 .txt 格式文件</p>
+                    <button class="btn" onclick="document.getElementById('fileInput').click()">
+                        选择文件
+                    </button>
+                </div>
+                
+                <div id="fileInfo" style="display: none;">
+                    <div class="file-info">
+                        <div>
+                            <strong>文件:</strong> <span id="fileName"></span> | 
+                            <strong>大小:</strong> <span id="fileSize"></span>
+                        </div>
+                        <div id="fileStatus">等待处理</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>🔄 2. 处理并上传</h3>
+                <p>系统将自动获取链接内容并上传到GitHub</p>
+                
+                <div id="status"></div>
+                
+                <div class="btn-group">
+                    <button class="btn" id="processBtn" onclick="processFile()" disabled>处理文件</button>
+                    <button class="btn btn-success" id="uploadBtn" onclick="uploadToGithub()" disabled>上传到GitHub</button>
+                    <button class="btn" onclick="clearAll()">重新开始</button>
+                </div>
+                
+                <div class="result" id="result">
+                    <!-- 处理结果将显示在这里 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let fileContent = '';
+        let targetUrl = '';
+        let base64Content = '';
+        let githubConfig = {};
+
+        // 初始化
+        function init() {
+            initDate();
+            loadGithubConfig();
+        }
+
+        // 初始化日期
+        function initDate() {
+            const now = new Date();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const todayDate = month + day;
+            
+            document.getElementById('currentDate').textContent = now.toLocaleDateString('zh-CN');
+            document.getElementById('todayDate').textContent = todayDate;
+        }
+
+        // 保存GitHub配置
+        function saveGithubConfig() {
+            const token = document.getElementById('githubToken').value.trim();
+            const owner = document.getElementById('repoOwner').value.trim();
+            const repo = document.getElementById('repoName').value.trim() || 'Karing';
+            
+            if (!token || !owner) {
+                showConfigStatus('请填写所有配置项', 'error');
+                return;
             }
-        } catch (error) {
-            console.log(`代理 ${i + 1} 失败:`, error.message);
-            continue;
+            
+            githubConfig = { token, owner, repo };
+            localStorage.setItem('githubConfig', JSON.stringify(githubConfig));
+            showConfigStatus('配置保存成功！', 'success');
         }
-    }
-    throw new Error('所有代理都失败了');
-}
 
-// 处理文件
-async function processFile() {
-    if (!targetUrl) {
-        showStatus('请先选择包含链接的文件', 'error');
-        return;
-    }
-    
-    try {
-        showStatus('正在获取链接内容...', 'info');
-        document.getElementById('processBtn').disabled = true;
-        
-        // 获取链接内容
-        base64Content = await fetchWithProxies(targetUrl);
-        
-        if (!base64Content) {
-            throw new Error('未能获取到有效内容');
+        // 加载GitHub配置
+        function loadGithubConfig() {
+            const saved = localStorage.getItem('githubConfig');
+            if (saved) {
+                githubConfig = JSON.parse(saved);
+                document.getElementById('githubToken').value = githubConfig.token || '';
+                document.getElementById('repoOwner').value = githubConfig.owner || '';
+                document.getElementById('repoName').value = githubConfig.repo || 'Karing';
+                showConfigStatus('配置已加载', 'success');
+            }
         }
-        
-        // 显示结果
-        showResult(base64Content);
-        showStatus('内容获取成功！', 'success');
-        document.getElementById('downloadBtn').disabled = false;
-        
-    } catch (error) {
-        showStatus(`获取失败: ${error.message}。请尝试手动获取。`, 'error');
-        document.getElementById('processBtn').disabled = false;
-        
-        // 显示手动操作指引
-        showManualInstructions();
-    }
-}
 
-// 显示手动操作指引
-function showManualInstructions() {
-    const resultDiv = document.getElementById('result');
-    resultDiv.innerHTML = `
-        <h4>手动操作指引：</h4>
-        <p>由于CORS限制，请按以下步骤手动操作：</p>
-        <ol>
-            <li>复制此链接：<strong>${targetUrl}</strong></li>
-            <li>在新标签页中打开链接</li>
-            <li>复制页面显示的Base64编码</li>
-            <li>粘贴到下面的文本框中</li>
-        </ol>
-        <textarea id="manualInput" placeholder="在此处粘贴Base64编码..." style="width: 100%; height: 100px; margin: 10px 0; padding: 10px;"></textarea>
-        <button class="btn" onclick="useManualInput()">使用手动输入</button>
-    `;
-    resultDiv.style.display = 'block';
-}
+        // 显示配置状态
+        function showConfigStatus(message, type) {
+            const statusDiv = document.getElementById('configStatus');
+            statusDiv.innerHTML = `<div class="status status-${type}">${message}</div>`;
+        }
 
-// 使用手动输入的内容
-function useManualInput() {
-    const manualContent = document.getElementById('manualInput').value.trim();
-    if (!manualContent) {
-        showStatus('请输入Base64编码', 'error');
-        return;
-    }
+        // 文件选择处理（保持之前的代码不变）
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        // 拖拽功能（保持之前的代码不变）
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', function() {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+
+        // 处理文件选择（保持之前的代码不变）
+        function handleFileSelect(file) {
+            if (!file.name.endsWith('.txt')) {
+                showStatus('请选择.txt文件', 'error');
+                return;
+            }
+            
+            document.getElementById('fileInfo').style.display = 'block';
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = formatFileSize(file.size);
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                fileContent = e.target.result;
+                targetUrl = extractUrl(fileContent);
+                
+                if (targetUrl) {
+                    showStatus(`找到链接: ${targetUrl}`, 'success');
+                    document.getElementById('processBtn').disabled = false;
+                } else {
+                    showStatus('文件中未找到有效链接', 'error');
+                }
+            };
+            
+            reader.readAsText(file);
+        }
+
+        // 提取URL（保持之前的代码不变）
+        function extractUrl(content) {
+            const urlMatch = content.match(/https?:\/\/[^\s\r\n]+/);
+            return urlMatch ? urlMatch[0] : null;
+        }
+
+        // 处理文件（修改为直接上传）
+        async function processFile() {
+            if (!targetUrl) {
+                showStatus('请先选择包含链接的文件', 'error');
+                return;
+            }
+            
+            if (!githubConfig.token) {
+                showStatus('请先配置GitHub信息', 'error');
+                return;
+            }
     
-    base64Content = manualContent;
-    showResult(base64Content);
-    showStatus('已使用手动输入的内容', 'success');
-    document.getElementById('downloadBtn').disabled = false;
-}
+            try {
+                showStatus('正在获取链接内容...', 'info');
+                document.getElementById('processBtn').disabled = true;
+                
+                // 使用CORS代理获取内容
+                const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(targetUrl);
+                const response = await fetch(proxyUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                base64Content = data.contents;
+                
+                if (!base64Content) {
+                    throw new Error('未能获取到有效内容');
+                }
+                
+                // 直接上传到GitHub
+                await uploadToGithub();
+                
+            } catch (error) {
+                showStatus(`获取失败: ${error.message}`, 'error');
+                document.getElementById('processBtn').disabled = false;
+            }
+        }
 
-// 显示结果
-function showResult(content) {
-    const resultDiv = document.getElementById('result');
-    resultDiv.textContent = content;
-    resultDiv.style.display = 'block';
-}
-
-// 下载文件
-function downloadFile() {
-    if (!base64Content) {
-        showStatus('没有可下载的内容', 'error');
-        return;
-    }
+        // 上传到GitHub
+        async function uploadToGithub() {
+            if (!base64Content) {
+                showStatus('请先处理文件', 'error');
+                return;
+            }
+            
+            if (!githubConfig.token) {
+                showStatus('请先配置GitHub信息', 'error');
+                return;
+            }
     
-    const timestamp = new Date().toLocaleString('zh-CN');
-    const today = new Date();
-    const fileDate = String(today.getMonth() + 1).padStart(2, '0') + 
-                   String(today.getDate()).padStart(2, '0');
-    
-    const finalContent = `# Karing 订阅数据
+            try {
+                showStatus('正在上传到GitHub...', 'info');
+                
+                const timestamp = new Date().toLocaleString('zh-CN');
+                const today = new Date();
+                const fileDate = String(today.getMonth() + 1).padStart(2, '0') + 
+                               String(today.getDate()).padStart(2, '0');
+                
+                const fileContent = `# Karing 订阅数据
 # 生成时间: ${timestamp}
 # 文件日期: ${fileDate}
 # 数据来源: ${targetUrl}
@@ -214,51 +279,102 @@ function downloadFile() {
 ${base64Content}
 
 # 文件结束`;
-    
-    const blob = new Blob([finalContent], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    
-    a.href = url;
-    a.download = '订阅.txt';
-    a.click();
-    
-    URL.revokeObjectURL(url);
-    showStatus('文件已下载完成，请上传到GitHub项目', 'success');
-}
+                
+                // 上传到GitHub
+                const result = await githubUploadFile('订阅.txt', fileContent);
+                
+                showStatus('✅ 文件已成功上传到GitHub！', 'success');
+                showResult(`文件已上传到: https://github.com/${githubConfig.owner}/${githubConfig.repo}/blob/main/订阅.txt`);
+                
+            } catch (error) {
+                showStatus(`上传失败: ${error.message}`, 'error');
+            }
+        }
 
-// 清空所有
-function clearAll() {
-    document.getElementById('fileInput').value = '';
-    document.getElementById('fileInfo').style.display = 'none';
-    document.getElementById('result').style.display = 'none';
-    document.getElementById('processBtn').disabled = true;
-    document.getElementById('downloadBtn').disabled = true;
-    
-    fileContent = '';
-    targetUrl = '';
-    base64Content = '';
-    
-    showStatus('已重置，请重新选择文件', 'info');
-}
+        // GitHub API上传文件
+        async function githubUploadFile(filename, content) {
+            const url = `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/contents/${filename}`;
+            
+            // 首先检查文件是否存在，获取sha
+            let sha = '';
+            try {
+                const existingResponse = await fetch(url, {
+                    headers: {
+                        'Authorization': `token ${githubConfig.token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                
+                if (existingResponse.ok) {
+                    const existingData = await existingResponse.json();
+                    sha = existingData.sha;
+                }
+            } catch (e) {
+                // 文件不存在，继续创建
+            }
+            
+            // 创建或更新文件
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${githubConfig.token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/vnd.github.v3+json'
+                },
+                body: JSON.stringify({
+                    message: `自动更新订阅文件: ${new Date().toLocaleString('zh-CN')}`,
+                    content: btoa(unescape(encodeURIComponent(content))),
+                    sha: sha || undefined
+                })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || '上传失败');
+            }
+            
+            return await response.json();
+        }
 
-// 显示状态
-function showStatus(message, type) {
-    const statusDiv = document.getElementById('status');
-    statusDiv.innerHTML = `<div class="status status-${type}">${message}</div>`;
-}
+        // 显示结果
+        function showResult(content) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = content;
+            resultDiv.style.display = 'block';
+        }
 
-// 格式化文件大小
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
+        // 清空所有
+        function clearAll() {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('fileInfo').style.display = 'none';
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('processBtn').disabled = true;
+            document.getElementById('uploadBtn').disabled = true;
+            
+            fileContent = '';
+            targetUrl = '';
+            base64Content = '';
+            
+            showStatus('已重置，请重新选择文件', 'info');
+        }
 
-// 初始化
-document.addEventListener('DOMContentLoaded', function() {
-    initDate();
-});
-</script>
+        // 显示状态
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status status-${type}">${message}</div>`;
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
