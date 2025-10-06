@@ -98,6 +98,15 @@
         .status-success { background: #d4edda; color: #155724; }
         .status-error { background: #f8d7da; color: #721c24; }
         .status-info { background: #d1ecf1; color: #0c5460; }
+        
+        .file-info {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            font-size: 13px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -107,8 +116,8 @@
         </header>
         
         <div class="content">
-            <input type="password" id="githubToken" class="config-input" placeholder="GitHub Token">
-            <input type="text" id="repoOwner" class="config-input" placeholder="GitHub用户名">
+            <input type="password" id="githubToken" class="config-input" placeholder="GitHub Token (必需)">
+            <input type="text" id="repoOwner" class="config-input" placeholder="GitHub用户名 (必需)">
             <input type="text" id="repoName" class="config-input" placeholder="仓库名" value="Karing">
             
             <div class="upload-area" id="uploadArea">
@@ -116,6 +125,8 @@
                 <h3>选择订阅文件</h3>
                 <p>点击或拖拽文件到此处</p>
             </div>
+            
+            <div class="file-info" id="fileInfo"></div>
             
             <div id="status"></div>
             
@@ -164,10 +175,14 @@
         function loadGithubConfig() {
             const saved = localStorage.getItem('githubConfig');
             if (saved) {
-                githubConfig = JSON.parse(saved);
-                document.getElementById('githubToken').value = githubConfig.token || '';
-                document.getElementById('repoOwner').value = githubConfig.owner || '';
-                document.getElementById('repoName').value = githubConfig.repo || 'Karing';
+                try {
+                    githubConfig = JSON.parse(saved);
+                    document.getElementById('githubToken').value = githubConfig.token || '';
+                    document.getElementById('repoOwner').value = githubConfig.owner || '';
+                    document.getElementById('repoName').value = githubConfig.repo || 'Karing';
+                } catch (e) {
+                    console.error('加载配置失败:', e);
+                }
             }
         }
 
@@ -183,13 +198,24 @@
                 targetUrl = extractUrl(fileContent);
                 
                 if (targetUrl) {
+                    showFileInfo(`已选择文件: ${file.name}<br>找到链接: ${targetUrl}`);
                     showStatus('文件已选择，可以处理', 'success');
                     checkReadyState();
                 } else {
+                    showFileInfo(`已选择文件: ${file.name}`);
                     showStatus('文件中未找到有效链接', 'error');
                 }
             };
+            reader.onerror = function() {
+                showStatus('文件读取失败', 'error');
+            };
             reader.readAsText(file);
+        }
+
+        function showFileInfo(info) {
+            const fileInfoDiv = document.getElementById('fileInfo');
+            fileInfoDiv.innerHTML = info;
+            fileInfoDiv.style.display = 'block';
         }
 
         function extractUrl(content) {
@@ -213,40 +239,110 @@
             }
             
             githubConfig = { token, owner, repo };
-            localStorage.setItem('githubConfig', JSON.stringify(githubConfig));
+            try {
+                localStorage.setItem('githubConfig', JSON.stringify(githubConfig));
+            } catch (e) {
+                console.warn('无法保存配置到本地存储:', e);
+            }
             
             try {
                 showStatus('正在处理文件...', 'info');
                 document.getElementById('processBtn').disabled = true;
                 
-                const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(targetUrl);
-                const response = await fetch(proxyUrl);
+                // 使用多个代理服务以提高成功率
+                const proxyUrls = [
+                    'https://api.allorigins.win/get?url=' + encodeURIComponent(targetUrl),
+                    'https://corsproxy.io/?' + encodeURIComponent(targetUrl),
+                    'https://cors-anywhere.herokuapp.com/' + targetUrl
+                ];
                 
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                let response = null;
+                let lastError = null;
                 
-                const data = await response.json();
-                const rawContent = data.contents;
+                // 尝试多个代理
+                for (const proxyUrl of proxyUrls) {
+                    try {
+                        showStatus(`尝试通过代理获取数据...`, 'info');
+                        response = await fetchWithTimeout(proxyUrl, { timeout: 10000 });
+                        
+                        if (response.ok) {
+                            break;
+                        }
+                    } catch (error) {
+                        lastError = error;
+                        console.warn(`代理 ${proxyUrl} 失败:`, error);
+                        continue;
+                    }
+                }
                 
-                if (!rawContent) throw new Error('未能获取到有效内容');
+                if (!response || !response.ok) {
+                    throw new Error(lastError?.message || `无法获取目标URL内容 (HTTP ${response?.status})`);
+                }
                 
-                base64Content = cleanBase64Content(rawContent);
+                let data;
+                const responseText = await response.text();
                 
-                if (!base64Content) throw new Error('未找到有效的Base64内容');
+                try {
+                    // 尝试解析为JSON（对于allorigins.win）
+                    data = JSON.parse(responseText);
+                    if (data.contents) {
+                        base64Content = cleanBase64Content(data.contents);
+                    } else {
+                        // 如果不是预期的JSON格式，直接使用响应文本
+                        base64Content = cleanBase64Content(responseText);
+                    }
+                } catch (e) {
+                    // 如果JSON解析失败，直接使用响应文本
+                    base64Content = cleanBase64Content(responseText);
+                }
+                
+                if (!base64Content) {
+                    throw new Error('未找到有效的Base64内容');
+                }
                 
                 showStatus('正在上传到GitHub...', 'info');
                 
                 const result = await githubUploadFile('subscribe.txt', base64Content);
                 
                 showStatus('上传成功！', 'success');
-                showResult(`上传成功！\n文件: https://github.com/${githubConfig.owner}/${githubConfig.repo}/blob/main/subscribe.txt\n内容长度: ${base64Content.length} 字符`);
+                showResult(`上传成功！\n文件: https://github.com/${githubConfig.owner}/${githubConfig.repo}/blob/main/subscribe.txt\n内容长度: ${base64Content.length} 字符\n提交SHA: ${result.commit.sha.substring(0, 8)}...`);
                 
             } catch (error) {
+                console.error('处理失败:', error);
                 showStatus(`处理失败: ${error.message}`, 'error');
+            } finally {
                 document.getElementById('processBtn').disabled = false;
             }
         }
 
+        // 添加超时功能的fetch
+        function fetchWithTimeout(url, options = {}) {
+            const { timeout = 8000, ...fetchOptions } = options;
+            
+            return new Promise((resolve, reject) => {
+                const controller = new AbortController();
+                const signal = controller.signal;
+                
+                const timeoutId = setTimeout(() => {
+                    controller.abort();
+                    reject(new Error('请求超时'));
+                }, timeout);
+                
+                fetch(url, { ...fetchOptions, signal })
+                    .then(response => {
+                        clearTimeout(timeoutId);
+                        resolve(response);
+                    })
+                    .catch(error => {
+                        clearTimeout(timeoutId);
+                        reject(error);
+                    });
+            });
+        }
+
         function cleanBase64Content(content) {
+            if (!content) return '';
+            
             const lines = content.split('\n');
             let cleanContent = '';
             
@@ -265,36 +361,68 @@
             
             let sha = '';
             try {
-                const existingResponse = await fetch(url, {
-                    headers: { 'Authorization': `Bearer ${githubConfig.token}`, 'Accept': 'application/vnd.github.v3+json' }
+                const existingResponse = await fetchWithTimeout(url, {
+                    headers: { 
+                        'Authorization': `Bearer ${githubConfig.token}`, 
+                        'Accept': 'application/vnd.github.v3+json',
+                        'User-Agent': 'Karing-Subscription-Processor'
+                    },
+                    timeout: 10000
                 });
                 
                 if (existingResponse.ok) {
                     const existingData = await existingResponse.json();
                     sha = existingData.sha;
+                } else if (existingResponse.status !== 404) {
+                    const errorText = await existingResponse.text();
+                    throw new Error(`检查文件失败: ${existingResponse.status} - ${errorText}`);
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.warn('检查现有文件失败:', e);
+            }
             
-            const response = await fetch(url, {
+            // 确保内容编码正确
+            let encodedContent;
+            try {
+                encodedContent = btoa(unescape(encodeURIComponent(content)));
+            } catch (e) {
+                throw new Error('内容编码失败: ' + e.message);
+            }
+            
+            const response = await fetchWithTimeout(url, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${githubConfig.token}`,
                     'Content-Type': 'application/json',
-                    'Accept': 'application/vnd.github.v3+json'
+                    'Accept': 'application/vnd.github.v3+json',
+                    'User-Agent': 'Karing-Subscription-Processor'
                 },
                 body: JSON.stringify({
                     message: `更新订阅文件: ${new Date().toLocaleString('zh-CN')}`,
-                    content: btoa(unescape(encodeURIComponent(content))),
+                    content: encodedContent,
                     sha: sha || undefined
-                })
+                }),
+                timeout: 15000
             });
             
+            const responseText = await response.text();
+            
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || `上传失败: ${response.status}`);
+                let errorMessage;
+                try {
+                    const errorData = JSON.parse(responseText);
+                    errorMessage = errorData.message || `上传失败: ${response.status}`;
+                } catch (e) {
+                    errorMessage = `上传失败: ${response.status} - ${responseText}`;
+                }
+                throw new Error(errorMessage);
             }
             
-            return await response.json();
+            try {
+                return JSON.parse(responseText);
+            } catch (e) {
+                throw new Error('GitHub响应解析失败: ' + e.message);
+            }
         }
 
         function showResult(content) {
@@ -304,7 +432,17 @@
         }
 
         function showStatus(message, type) {
-            document.getElementById('status').innerHTML = `<div class="status status-${type}">${message}</div>`;
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status status-${type}">${message}</div>`;
+            
+            // 3秒后自动清除成功和信息状态
+            if (type === 'success' || type === 'info') {
+                setTimeout(() => {
+                    if (statusDiv.innerHTML.includes(message)) {
+                        statusDiv.innerHTML = '';
+                    }
+                }, 3000);
+            }
         }
 
         document.addEventListener('DOMContentLoaded', init);
