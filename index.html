@@ -235,10 +235,10 @@
                 
                 showStatus('正在上传到GitHub...', 'info');
                 
-                const result = await githubUploadFile('订阅.txt', base64Content);
+                const result = await githubUploadFile('subscribe.txt', base64Content);
                 
                 showStatus('上传成功！', 'success');
-                showResult(`上传成功！\n文件: https://github.com/${githubConfig.owner}/${githubConfig.repo}/blob/main/订阅.txt\n内容长度: ${base64Content.length} 字符`);
+                showResult(`上传成功！\n文件: https://github.com/${githubConfig.owner}/${githubConfig.repo}/blob/main/subscribe.txt\n内容长度: ${base64Content.length} 字符`);
                 
             } catch (error) {
                 showStatus(`处理失败: ${error.message}`, 'error');
